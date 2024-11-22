@@ -1,40 +1,114 @@
-const express = require('express');
 const { Command } = require('commander');
 const path = require('path');
-
-// Створення об'єкта програми за допомогою Commander.js
+const fs = require('fs');
+const express = require('express');
 const program = new Command();
+const app = express();
+const multer = require('multer');
+const upload = multer();
+
 program
-  .requiredOption('-h, --host <host>', 'address of the server') // обовʼязковий параметр для хоста
-  .requiredOption('-p, --port <port>', 'port of the server') // обовʼязковий параметр для порту
-  .requiredOption('-c, --cache <cache>', 'path to the directory for cached files') // обовʼязковий параметр для кешу
+  .option('-h, --host <type>', 'server host')
+  .option('-p, --port <type>', 'server port')
+  .option('-c, --cache <path>', 'cache directory')
   .parse(process.argv);
+  
+const option = program.opts();
 
-// Отримання параметрів командного рядка
+app.use(express.json());
+
+if(!option.host){
+    console.error("Вкажіть адресу сервера")
+    process.exit(1);
+}
+if(!option.port){
+    console.error("Вкажіть порт")
+    process.exit(1);
+}
+if(!option.cache){
+    console.error("Вкажіть папку для кешу")
+    process.exit(1);
+}
 const { host, port, cache } = program.opts();
+console.log(`Host: ${host}\nPort: ${port}\nCache Directory: ${cache}`);
 
-// Перевірка на відсутність обов'язкових параметрів
-if (!host || !port || !cache) {
-  console.error('Error: Missing required parameters!');
-  program.help(); // Показує допомогу для правильного використання програми
-  process.exit(1); // Завершує програму з кодом помилки
+const cachePath = path.resolve(option.cache);
+if (!fs.existsSync(cachePath)) {
+    fs.mkdirSync(cachePath, { recursive: true });
 }
 
-// Створення екземпляра Express.js
-const app = express();
-
-// Налаштування кешу
-const cacheDir = path.resolve(cache);
-console.log(`Cache directory: ${cacheDir}`);
-
-// Основний маршрут для перевірки роботи сервера
-app.get('/', (req, res) => {
-  res.send('Welcome to the Notes API');
+app.listen(option.port, option.host, () => {
+    console.log(`Server is running on http://${option.host}:${option.port}`);
 });
 
-// Запуск сервера
-app.listen(port, host, () => {
-  console.log(`Server is running at http://${host}:${port}`);
+app.get('/notes/:noteName', (req, res) => {
+    const notePath = path.join(option.cache, req.params.noteName);
+
+    if (!fs.existsSync(notePath)) {
+        return res.status(404).send('Not found');
+    }
+
+    const noteText = fs.readFileSync(notePath, 'utf8');
+    res.send(noteText);
+});
+
+app.put('/notes/:noteName', express.text(), (req, res) => {
+    const notePath = path.join(option.cache, req.params.noteName);
+
+    if (!fs.existsSync(notePath)) {
+        return res.status(404).send('Not found');
+    }
+    const newText = req.body; // Тіло запиту обробляється як текст
+    if (!newText) {
+        return res.status(400).send('Text is required');
+    }
+    fs.writeFileSync(notePath, newText);
+    res.send('Note updated');
 });
 
 
+app.delete('/notes/:noteName', (req, res) => {
+    const notePath = path.join(option.cache, req.params.noteName);
+
+    if (!fs.existsSync(notePath)) {
+        return res.status(404).send('Not found');
+    }
+
+    fs.unlinkSync(notePath);
+    res.send('Note deleted');
+});
+
+app.get('/notes', (req, res) => {
+    const files = fs.readdirSync(option.cache);
+    const notes = files.map(fileName => {
+        const text = fs.readFileSync(path.join(option.cache, fileName), 'utf8');
+        return { name: fileName, text };
+    });
+
+    res.json(notes);
+});
+
+app.post('/write', express.urlencoded({ extended: true }), (req, res) => {
+    const noteName = req.body.note_name;
+    const noteText = req.body.note;
+    const notePath = path.join(option.cache, noteName);
+
+    if (fs.existsSync(notePath)) {
+        return res.status(400).send('Note already exists');
+    }
+    if (!noteName || !noteText) {
+        return res.status(400).send('Note name and content are required');
+    }
+    try {
+        fs.writeFileSync(notePath, noteText);
+        res.status(201).send('Note created');
+    } catch (error) {
+        console.error('Error writing note:', error);
+        res.status(500).send('Error creating note');
+    }
+});
+
+
+app.get('/UploadForm.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'UploadForm.html'));
+});
