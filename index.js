@@ -4,6 +4,8 @@ const fs = require('fs');
 const express = require('express');
 const program = new Command();
 const app = express();
+const multer = require('multer'); 
+const upload = multer({ storage: multer.memoryStorage() });
 
 program
   .option('-h, --host <type>', 'server host')
