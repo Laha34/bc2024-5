@@ -4,8 +4,6 @@ const fs = require('fs');
 const express = require('express');
 const program = new Command();
 const app = express();
-const multer = require('multer');
-const upload = multer();
 
 program
   .option('-h, --host <type>', 'server host')
@@ -58,7 +56,7 @@ app.put('/notes/:noteName', express.text(), (req, res) => {
     if (!fs.existsSync(notePath)) {
         return res.status(404).send('Not found');
     }
-    const newText = req.body; // Тіло запиту обробляється як текст
+    const newText = req.body; 
     if (!newText) {
         return res.status(400).send('Text is required');
     }
@@ -89,24 +87,26 @@ app.get('/notes', (req, res) => {
 });
 
 app.post('/write', express.urlencoded({ extended: true }), (req, res) => {
-    const noteName = req.body.note_name;
-    const noteText = req.body.note;
+    const { note_name: noteName, note } = req.body;
     const notePath = path.join(option.cache, noteName);
+
+    if (!noteName || !note) {
+        return res.status(400).send('Note name and content are required');
+    }
 
     if (fs.existsSync(notePath)) {
         return res.status(400).send('Note already exists');
     }
-    if (!noteName || !noteText) {
-        return res.status(400).send('Note name and content are required');
-    }
-    try {
-        fs.writeFileSync(notePath, noteText);
+
+    fs.writeFile(notePath, note, (err) => {
+        if (err) {
+            console.error('Error writing note:', err);
+            return res.status(500).send('Error creating note');
+        }
         res.status(201).send('Note created');
-    } catch (error) {
-        console.error('Error writing note:', error);
-        res.status(500).send('Error creating note');
-    }
+    });
 });
+
 
 
 app.get('/UploadForm.html', (req, res) => {
